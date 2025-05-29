@@ -33,5 +33,6 @@
     "pipeline_parallel_degree": 1,
     "do_train": true,
     "do_eval": true,
-    "use_mora": false
+    "use_mora": false,
+    "report_to": "swanlab"
 }
