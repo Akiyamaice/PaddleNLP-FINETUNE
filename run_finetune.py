@@ -63,8 +63,10 @@ from paddlenlp.trl.llm_utils import (
 )
 from paddlenlp.utils.log import logger
 from paddlenlp.utils.tools import get_env_device
+
 # Fine-tune Environment Variables to support sharding stage1 overlap optimization.
 os.environ["USE_CASUAL_MASK"] = "False"
+
 flash_mask_support_list = [
     DeepseekV2ForCausalLM,
     DeepseekV2ForCausalLMPipe,
@@ -77,6 +79,8 @@ flash_mask_support_list = [
     Qwen2MoeForCausalLM,
     Qwen2MoeForCausalLMPipe,
 ]
+
+
 def paddlenlp_verison_check():
     import paddlenlp
     from paddlenlp.utils.tools import compare_version
@@ -85,6 +89,8 @@ def paddlenlp_verison_check():
         raise ValueError(
             "This scripts require paddlenlp >= 3.0.0b3, please reinstall: pip install paddlenlp >= 3.0.0b3 "
         )
+
+
 def main():
     paddlenlp_verison_check()
     parser = PdArgumentParser((GenerateArgument, ModelConfig, ReftArgument, DataConfig, SFTConfig))
@@ -137,12 +143,20 @@ def main():
             raise ValueError("Please specific dtype: --fp16 or --bf16")
     else:
         dtype = "float32"
+    # quantization_config = dict(
+    #     weight_quantize_algo=model_args.weight_quantize_algo,
+    #     qlora_weight_blocksize=model_args.qlora_weight_blocksize,
+    #     qlora_weight_double_quant=model_args.qlora_weight_double_quant,
+    #     qlora_weight_double_quant_block_size=model_args.qlora_weight_double_quant_block_size,
+    # )
+
     model_config = AutoConfig.from_pretrained(
         model_args.model_name_or_path,
         dtype=dtype,
         from_aistudio=model_args.from_aistudio,
         # quantization_config=quantization_config,
     )
+
     if training_args.use_ssa:
         assert (
             training_args.ssa_group_size_ratio is not None
@@ -202,7 +216,9 @@ def main():
             model_config.long_sequence_init_args["original_max_position_embeddings"] = data_args.max_length
 
     logger.info(f"Final model config: {model_config}")
+
     logger.info("Creating model")
+
     model_class = AutoModelForCausalLM
     if training_args.pipeline_parallel_degree > 1:
         if data_args.eval_with_do_generation and training_args.do_eval:
@@ -367,7 +383,9 @@ def main():
             "rougel": rougel.score(),
             "bleu4": bleu4.score(),
         }
+
     # Create trainer
+
     if (
         training_args.pipeline_parallel_degree > 1
         or training_args.sequence_parallel
@@ -398,10 +416,6 @@ def main():
         return_attention_mask=not model_args.flash_mask,
         pad_to_multiple_of=data_args.pad_to_multiple_of,
     )
-    swanlab_callback = SwanLabCallback(
-        project="Qwen2.5-7B-SFT",
-        experiment_name="Qwen2.5-7B",
-    )
 
     trainer = SFTTrainer(
         model=model,
@@ -412,7 +426,7 @@ def main():
         compute_metrics=metrics,
         data_collator=data_collator_fn if not model_args.reft else ReftDataCollator(data_collator=data_collator_fn),
         do_generation=data_args.eval_with_do_generation,
-        callbacks=[ZeroPaddingIterDatasetCallback(),swanlab_callback] if isinstance(train_ds, ZeroPaddingIterableDataset) else None,
+        callbacks=[ZeroPaddingIterDatasetCallback()] if isinstance(train_ds, ZeroPaddingIterableDataset) else None,
         gen_args=gen_args,
         data_args=data_args,
     )
@@ -456,6 +470,7 @@ def main():
         eval_result = trainer.evaluate(dev_ds)
         trainer.log_metrics("eval", eval_result)
 
+
 def save_to_aistudio(model_args, training_args, trainer):
     kwargs = {}
     if model_args.aistudio_token is not None:
@@ -479,6 +494,7 @@ def save_to_aistudio(model_args, training_args, trainer):
         exist_ok=True,
         **kwargs,
     )
+
 
 def create_peft_model(model_args, reft_args, training_args, dtype, model_config, model, reft_layers):
     if model_args.prefix_tuning:
@@ -595,6 +611,7 @@ def create_peft_model(model_args, reft_args, training_args, dtype, model_config,
 
     return model
 
+
 def trans_dataset_to_ids(train_ds, dev_ds, test_ds, model_args, data_args, trans_func, eval_zero_padding):
     if train_ds is not None:
         train_ds = train_ds.map(
@@ -618,6 +635,7 @@ def trans_dataset_to_ids(train_ds, dev_ds, test_ds, model_args, data_args, trans
         test_ds = test_ds.map(partial(trans_func, is_test=data_args.eval_with_do_generation))
 
     return train_ds, dev_ds, test_ds
+
 
 def create_dataset(data_args, training_args):
     if data_args.dataset_name_or_path is None:
@@ -685,5 +703,7 @@ def create_dataset(data_args, training_args):
             test_ds = load_dataset(data_args.dataset_name_or_path, splits=["test"])[0]
 
     return train_ds, dev_ds, test_ds
+
+
 if __name__ == "__main__":
     main()
